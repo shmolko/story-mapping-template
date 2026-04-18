@@ -79,12 +79,19 @@
       font-size: 14px;
     }
 
+    /* Wraps the project title and YouTrack URL so they stack vertically */
+    .title-url-group {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-width: 200px;
+      gap: 5px;
+    }
+
     #projectTitle {
       font-size: 18px;
       font-weight: 700;
       color: var(--text);
-      flex: 1;
-      min-width: 160px;
       padding: 3px 6px;
       border-radius: 6px;
       border: 1px solid transparent;
@@ -93,6 +100,79 @@
     #projectTitle:focus {
       border-color: var(--red);
       background: var(--red-light);
+    }
+
+    /* Row that holds the URL input/link + pencil button side by side */
+    .url-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      align-self: flex-start; /* don't stretch to full topbar width */
+    }
+
+    /* YouTrack URL input — shown while the user is typing the URL */
+    .youtrack-url-input {
+      font-family: inherit;
+      font-size: 12px;
+      color: var(--text-mid);
+      width: 320px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border-mid);
+      background: var(--bg-page);
+      outline: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .youtrack-url-input:focus {
+      border-color: var(--red);
+      background: var(--red-light);
+    }
+    .youtrack-url-input::placeholder {
+      color: var(--text-soft);
+    }
+
+    /* The confirmed URL rendered as a clickable link (replaces the input after blur/Enter) */
+    .youtrack-url-link {
+      font-size: 12px;
+      color: var(--text-mid);
+      text-decoration: none;
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-page);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      width: 320px;
+      display: none; /* shown via JS when URL is confirmed */
+    }
+    .youtrack-url-link:hover {
+      border-color: var(--red);
+      color: var(--red);
+      background: var(--red-light);
+    }
+
+    /* Small pencil button — lets the user go back to editing the URL */
+    .youtrack-edit-btn {
+      display: none; /* shown via JS when URL is confirmed */
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border: 1px solid var(--border-mid);
+      border-radius: 6px;
+      background: var(--bg-white);
+      color: var(--text-soft);
+      font-size: 12px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      padding: 0;
+    }
+    .youtrack-edit-btn:hover {
+      background: var(--bg-page);
+      color: var(--text);
+      border-color: var(--border);
     }
 
     .btn {
@@ -366,6 +446,9 @@
       .goal-del, .story-del, .task-del,
       .add-story-card, .add-task-btn, .add-goal-btn { display: none !important; }
 
+      /* Hide the YouTrack URL field and its link button in print/PDF mode */
+      #youtrackUrl, #youtrackLink, #youtrackEditBtn { display: none !important; }
+
       /* Prevent page breaks inside rows */
       .goal-row { break-inside: avoid; }
 
@@ -383,7 +466,25 @@
   <div class="topbar">
     <!-- Red circle icon mirrors the section icons in the screenshot -->
     <div class="topbar-icon">&#9632;</div>
-    <textarea id="projectTitle" rows="1" placeholder="Project name…">Project Story Map</textarea>
+
+    <!-- Title and YouTrack URL stacked vertically -->
+    <div class="title-url-group">
+      <textarea id="projectTitle" rows="1" placeholder="Project name…">Project Story Map</textarea>
+      <!-- URL row: input while editing, link after confirming -->
+      <div class="url-row">
+        <input
+          type="url"
+          id="youtrackUrl"
+          class="youtrack-url-input"
+          placeholder="YouTrack project URL…"
+        />
+        <!-- Confirmed URL displayed as a clickable link (opens in new tab) -->
+        <a id="youtrackLink" class="youtrack-url-link" href="#" target="_blank" title="Open YouTrack project"></a>
+        <!-- Pencil button — switches back to the input so the URL can be edited -->
+        <button id="youtrackEditBtn" class="youtrack-edit-btn" title="Edit URL">✏</button>
+      </div>
+    </div>
+
     <button class="btn btn-load"  onclick="loadFromFile()">Load JSON</button>
     <button class="btn btn-save"  onclick="saveToFile()">Save JSON</button>
     <button class="btn btn-print" onclick="window.print()">Export PDF</button>
@@ -444,6 +545,7 @@
   // When saved, this exact object is written to a .json file.
   let data = {
     title: "Project Story Map",
+    youtrackUrl: '',  // stores the YouTrack project URL (empty by default)
     goals: []
   };
 
@@ -454,6 +556,9 @@
     const titleEl = document.getElementById('projectTitle');
     titleEl.value = data.title;
     autoResize(titleEl);
+
+    // Restore the URL field and switch to the correct display mode (input or link)
+    syncUrlDisplay();
 
     const board = document.getElementById('board');
     board.innerHTML = '';
@@ -656,6 +761,8 @@
   // Saves the current board as a .json file that downloads to your computer
   function saveToFile() {
     data.title = document.getElementById('projectTitle').value;
+    // Capture the YouTrack URL so it's included in the saved JSON
+    data.youtrackUrl = document.getElementById('youtrackUrl').value;
     const json = JSON.stringify(data, null, 2); // "null, 2" makes it nicely indented
     const blob = new Blob([json], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
@@ -701,6 +808,74 @@
   document.getElementById('projectTitle').addEventListener('focus', function() {
     this.select();
   });
+
+  // Keep data in sync as the user types (but don't switch to link mode yet)
+  document.getElementById('youtrackUrl').addEventListener('input', function() {
+    data.youtrackUrl = this.value;
+  });
+
+  // When the user presses Enter, confirm the URL and switch to link display mode
+  document.getElementById('youtrackUrl').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      this.blur(); // triggers the blur handler below
+    }
+  });
+
+  // When the input loses focus, switch to link display mode if there's a URL
+  document.getElementById('youtrackUrl').addEventListener('blur', function() {
+    if (this.value.trim()) {
+      showUrlAsLink();
+    }
+  });
+
+  // Clicking the pencil button switches back to input editing mode
+  document.getElementById('youtrackEditBtn').addEventListener('click', function() {
+    showUrlAsInput();
+  });
+
+  // Hides the input and shows the URL as a clickable <a> link + pencil edit button
+  function showUrlAsLink() {
+    const url = data.youtrackUrl.trim();
+    const input = document.getElementById('youtrackUrl');
+    const link  = document.getElementById('youtrackLink');
+    const editBtn = document.getElementById('youtrackEditBtn');
+
+    // Update the <a> element with the URL and a shortened display text
+    link.href = url;
+    link.textContent = url;
+
+    // Switch visibility: hide input, show link + edit button
+    input.style.display = 'none';
+    link.style.display = 'block';
+    editBtn.style.display = 'flex';
+  }
+
+  // Hides the link and shows the input field so the URL can be changed
+  function showUrlAsInput() {
+    const input = document.getElementById('youtrackUrl');
+    const link  = document.getElementById('youtrackLink');
+    const editBtn = document.getElementById('youtrackEditBtn');
+
+    input.style.display = '';
+    link.style.display = 'none';
+    editBtn.style.display = 'none';
+
+    // Focus and select all so the user can immediately replace the URL
+    input.focus();
+    input.select();
+  }
+
+  // Called by render() to restore the correct display mode when loading from JSON
+  function syncUrlDisplay() {
+    const url = (data.youtrackUrl || '').trim();
+    if (url) {
+      document.getElementById('youtrackUrl').value = url;
+      showUrlAsLink();
+    } else {
+      showUrlAsInput();
+    }
+  }
 
   // ── Boot ──────────────────────────────────────────────────────────────────────
   render();
