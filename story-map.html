@@ -424,6 +424,16 @@
     el.style.height = el.scrollHeight + 'px';
   }
 
+  // Confirms the field (blurs it) when the user presses Enter instead of adding a new line
+  function onEnterBlur(el) {
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        el.blur();
+      }
+    });
+  }
+
   // Call autoResize on all textareas after rendering
   function resizeAll() {
     document.querySelectorAll('textarea').forEach(autoResize);
@@ -483,6 +493,7 @@
       row.appendChild(goalCell);
       row.appendChild(storiesCell);
       board.appendChild(row);
+      onEnterBlur(goalCell.querySelector('textarea'));
     });
 
     // After the DOM is updated, resize all textareas
@@ -501,6 +512,7 @@
     titleArea.placeholder = 'User Story…';
     titleArea.value = story.text;
     titleArea.oninput = () => { updateStoryText(goalId, story.id, titleArea.value); autoResize(titleArea); };
+    onEnterBlur(titleArea);
 
     // Delete button for the card
     const delBtn = document.createElement('button');
@@ -549,6 +561,7 @@
     textarea.value = task.text;
     textarea.placeholder = '';
     textarea.oninput = () => { updateTaskText(goalId, storyId, task.id, textarea.value); autoResize(textarea); };
+    onEnterBlur(textarea);
 
     const delBtn = document.createElement('button');
     delBtn.className = 'task-del';
