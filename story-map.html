@@ -697,6 +697,11 @@
     autoResize(this);
   });
 
+  // Select all text on focus so the user can start typing immediately
+  document.getElementById('projectTitle').addEventListener('focus', function() {
+    this.select();
+  });
+
   // ── Boot ──────────────────────────────────────────────────────────────────────
   render();
 </script>
