@@ -1,123 +1,92 @@
-# YouTrack Story Map Import Prompt
-
-**What this does:** Paste this prompt into a Cursor chat (or any LLM with YouTrack MCP access), along with your story map JSON, and the agent will automatically create all stories and tasks in YouTrack with the correct subtask relationships.
+You are an agent with access to the `user-youtrack` MCP server. Your task is to import a story map into YouTrack by reading a JSON file located in the same directory as this file, then creating the appropriate issues and subtask relationships.
 
 ---
 
-## Before you run this
+## Step 1 — Find and read the story map JSON
 
-Paste **two things** into the chat:
-
-1. This entire prompt
-2. Your story map JSON (copy the full JSON content directly into the message)
-
-Make sure your LLM session has access to the `user-youtrack` MCP server.
+Look in the same directory as this file for a `.json` file. Read it. It contains the story map data you will import.
 
 ---
 
-## Instructions for the LLM
+## Step 2 — Parse the JSON
 
-You are an agent with access to the `user-youtrack` MCP server. Follow these steps precisely to import a story map JSON into YouTrack.
-
----
-
-### Step 1 — Parse the JSON
-
-From the JSON provided by the user:
+From the JSON:
 
 1. Extract the `youtrackUrl` field.
-2. Derive the **project short name** from the URL using this pattern:
-  `https://[instance].youtrack.cloud/projects/[SHORTNAME]/issues`
-   For example: `https://mycompany.youtrack.cloud/projects/PROJ/issues` → short name is `PROJ`.
-3. Walk through every goal → story → task and build an internal list of what needs to be created:
-  - **Goals** are NOT created as YouTrack issues. They are planning context only.
-  - **Stories** will be created as YouTrack issues. The story's `text` becomes the `summary`. The description should include the goal context: `"Goal context: [goal text]"`.
-  - **Tasks** will be created as YouTrack issues. The task's `text` becomes the `summary`. Each task must be linked as a subtask of its parent story.
+2. Derive the **project short name** from the URL:
+   - Pattern: `https://[instance].youtrack.cloud/projects/[SHORTNAME]/issues`
+   - Example: `https://mycompany.youtrack.cloud/projects/PROJ/issues` → short name is `PROJ`
+3. Walk the structure: goal → story → task. Build an internal plan:
+   - **Goals** are NOT created as YouTrack issues. They provide context only.
+   - **Stories** become YouTrack issues. Use the story's `text` as `summary`. Set `description` to `"Goal context: [parent goal text]"`.
+   - **Tasks** become YouTrack issues. Use the task's `text` as `summary`. Each task must be linked as a subtask of its parent story.
 
 ---
 
-### Step 2 — Confirm the plan with the user
+## Step 3 — Confirm the plan
 
-Before creating anything, print a summary like this:
+Before creating anything, print a summary:
 
 ```
 Project: PROJ
-Stories to create: 5
-Tasks to create: 12
+Stories to create: N
+Tasks to create: M
 
-Stories and their tasks:
-  [Goal: "Goal A text"]
-    - Story: "As a user, I want to log in"
-        • Task: "Implement login API"
-        • Task: "Add form validation"
-  [Goal: "Goal B text"]
-    - Story: "As a user, I want to reset my password"
-        • Task: "Send reset email"
+[Goal: "Goal A"]
+  - Story: "story text"
+      • Task: "task text"
+      • Task: "task text"
+[Goal: "Goal B"]
+  - Story: "story text"
+      • Task: "task text"
 ```
 
-Then ask: **"Does this look correct? Shall I proceed with creating these issues in YouTrack?"**
+Ask: "Does this look correct? Shall I proceed?"
 
-Wait for the user to confirm before continuing.
+Wait for confirmation before continuing.
 
 ---
 
-### Step 3 — Create issues in order
+## Step 4 — Create issues
 
-Process one story at a time. For each story, fully complete its tasks before moving on to the next story. Follow this exact sequence:
+Process one story at a time. Fully complete all tasks for a story before moving to the next.
 
-#### For each story:
+### For each story:
 
-1. **Create the story issue** using `create_content` → `create_issue`:
-  - `summary`: the story's `text` field
-  - `description`: `"Goal context: [the parent goal's text]"`
-  - `project`: `{ "shortName": "PROJ" }` (use the short name you derived in Step 1)
-  - Record the returned YouTrack issue ID (e.g. `PROJ-12`).
-2. **For each task belonging to this story**, in order:
-  a. **Create the task issue** using `create_content` → `create_issue`:
-      - `summary`: the task's `text` field
+1. Call `create_content` with `action: "create_issue"`:
+   - `summary`: story's `text`
+   - `description`: `"Goal context: [parent goal text]"`
+   - `project`: `{ "shortName": "PROJ" }`
+   - Record the returned issue ID (e.g. `PROJ-12`).
+
+2. For each task under this story:
+   a. Call `create_content` with `action: "create_issue"`:
+      - `summary`: task's `text`
       - `project`: `{ "shortName": "PROJ" }`
-      - Record the returned YouTrack issue ID (e.g. `PROJ-13`).
-   b. **Link the task as a subtask** of the story using `run_commands` → `execute_command`:
-      - `issues`: `["PROJ-13"]` (the task's issue ID)
-      - `command`: `"subtask of PROJ-12"` (the story's issue ID)
-   c. Repeat for the next task.
-3. Move on to the next story.
+      - Record the returned issue ID (e.g. `PROJ-13`).
+   b. Call `run_commands` with `action: "execute_command"`:
+      - `issues`: `["PROJ-13"]`
+      - `command`: `"subtask of PROJ-12"`
 
-#### Error handling
+### Error handling
 
-- If any `create_issue` call fails, log the failure (note which story or task it was), skip that item, and continue with the next one.
-- If a `execute_command` (subtask link) call fails, log it but still continue — do not abort the whole import.
-- Do not stop the entire import because of a single failure.
+- If a `create_issue` call fails: log it, skip that item, continue with the next.
+- If an `execute_command` (subtask link) call fails: log it, continue — do not abort the import.
 
 ---
 
-### Step 4 — Report results
+## Step 5 — Report results
 
-After all issues have been processed, print a summary table:
+Print a summary table:
 
+| Story | YouTrack ID | Tasks Created |
+| ----- | ----------- | ------------- |
+| story text | PROJ-12 | PROJ-13, PROJ-14 |
 
-| Story                                  | YouTrack ID | Tasks Created    |
-| -------------------------------------- | ----------- | ---------------- |
-| As a user, I want to log in            | PROJ-12     | PROJ-13, PROJ-14 |
-| As a user, I want to reset my password | PROJ-15     | PROJ-16          |
-
-
-If any items failed, list them clearly beneath the table:
+If any items failed, list them below the table:
 
 ```
-Failed items:
-  - Story "As a user, I want to export data" — create_issue returned an error
-  - Task "Add form validation" (under PROJ-12) — subtask link failed
+Failed:
+  - Story "..." — create_issue error
+  - Task "..." (under PROJ-12) — subtask link failed
 ```
-
----
-
-## Reusing this prompt
-
-This file is reusable for any project. To import a different story map in the future:
-
-1. Open a new Cursor chat with YouTrack MCP access
-2. Paste this prompt
-3. Paste the new story map JSON alongside it
-
-The agent will derive the project and structure automatically from the JSON.
