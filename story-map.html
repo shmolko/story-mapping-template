@@ -394,15 +394,15 @@
 
     <!-- ── Column labels ── -->
     <div class="board-header">
-      <div class="col-label">Goals</div>
-      <div class="col-label">Story Chunks &amp; Tasks</div>
+      <div class="col-label">Co chceme (cíle)</div>
+      <div class="col-label">Co se musí stát (User storky a tasky)</div>
     </div>
 
     <!-- ── Board ── -->
     <div class="board" id="board"></div>
 
     <!-- Add goal -->
-    <button class="add-goal-btn" onclick="addGoal()">+ Add Goal</button>
+    <button class="add-goal-btn" onclick="addGoal()">+ Cíl</button>
 
   </div><!-- /board-wrap -->
 </div><!-- /app-shell -->
@@ -457,9 +457,9 @@
       const goalCell = document.createElement('div');
       goalCell.className = 'goal-cell';
       goalCell.innerHTML = `
-        <div class="goal-num">Goal ${goalIndex + 1}</div>
+        <div class="goal-num">Cíl ${goalIndex + 1}</div>
         <textarea
-          placeholder="Describe this goal…"
+          placeholder=""
           oninput="updateGoalText('${goal.id}', this.value); autoResize(this)"
         >${escHtml(goal.text)}</textarea>
         <button class="goal-del" title="Delete goal" onclick="deleteGoal('${goal.id}')">×</button>
@@ -476,7 +476,7 @@
       // "Add story" placeholder card
       const addStoryBtn = document.createElement('button');
       addStoryBtn.className = 'add-story-card';
-      addStoryBtn.textContent = '+ Add Story Chunk';
+      addStoryBtn.textContent = '+ User Story';
       addStoryBtn.onclick = () => addStory(goal.id);
       storiesCell.appendChild(addStoryBtn);
 
@@ -498,7 +498,7 @@
     // Story title
     const titleArea = document.createElement('textarea');
     titleArea.className = 'story-title';
-    titleArea.placeholder = 'Story chunk title…';
+    titleArea.placeholder = 'User Story…';
     titleArea.value = story.text;
     titleArea.oninput = () => { updateStoryText(goalId, story.id, titleArea.value); autoResize(titleArea); };
 
@@ -523,7 +523,7 @@
     // "Add task" button
     const addTaskBtn = document.createElement('button');
     addTaskBtn.className = 'add-task-btn';
-    addTaskBtn.textContent = '+ Add task';
+    addTaskBtn.textContent = '+ Task';
     addTaskBtn.onclick = () => addTask(goalId, story.id);
 
     card.appendChild(delBtn);
@@ -547,7 +547,7 @@
 
     const textarea = document.createElement('textarea');
     textarea.value = task.text;
-    textarea.placeholder = 'Task description…';
+    textarea.placeholder = '';
     textarea.oninput = () => { updateTaskText(goalId, storyId, task.id, textarea.value); autoResize(textarea); };
 
     const delBtn = document.createElement('button');
