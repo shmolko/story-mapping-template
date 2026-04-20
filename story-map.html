@@ -436,6 +436,9 @@
       background: var(--red-light);
     }
 
+    /* Disabled state for the Export PDF button while generating */
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
     /* ── Print / PDF styles ── */
     @media print {
       body, .app-shell { background: #fff; }
@@ -487,7 +490,7 @@
 
     <button class="btn btn-load"  onclick="loadFromFile()">Load JSON</button>
     <button class="btn btn-save"  onclick="saveToFile()">Save JSON</button>
-    <button class="btn btn-print" onclick="window.print()">Export PDF</button>
+    <button class="btn btn-print" id="btnExportPdf" onclick="exportPDF()">Export PDF</button>
   </div>
 
   <!-- ── Board wrapper ── -->
@@ -510,6 +513,10 @@
 
 <!-- Hidden file input for loading JSON -->
 <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFileLoad(event)" />
+
+<!-- html2canvas captures the board as an image; jsPDF assembles it into a PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
   // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -874,6 +881,118 @@
       showUrlAsLink();
     } else {
       showUrlAsInput();
+    }
+  }
+
+  // ── PDF Export ────────────────────────────────────────────────────────────────
+
+  /*
+    html2canvas often clips <textarea> text. Before rasterization, this copies each
+    live textarea's value + typography into a plain <div> inside the cloned DOM so
+    the full wrapped text paints correctly.
+  */
+  function materializeTextareasForPdf(liveRoot, clonedRoot) {
+    const liveTAs  = [...liveRoot.querySelectorAll('textarea')];
+    const cloneTAs = [...clonedRoot.querySelectorAll('textarea')];
+    const n = Math.min(liveTAs.length, cloneTAs.length);
+
+    for (let i = 0; i < n; i++) {
+      const live = liveTAs[i];
+      const ta   = cloneTAs[i];
+
+      // Sync current value — cloneNode does not always carry live textarea values
+      ta.value = live.value;
+
+      const div = clonedRoot.ownerDocument.createElement('div');
+      const cs  = getComputedStyle(live);
+      const d   = div.style;
+
+      div.textContent = live.value;
+
+      d.display       = 'block';
+      d.boxSizing     = cs.boxSizing || 'border-box';
+      d.width         = live.offsetWidth + 'px';
+      d.minHeight     = Math.max(live.scrollHeight, live.offsetHeight) + 'px';
+      d.fontFamily    = cs.fontFamily;
+      d.fontSize      = cs.fontSize;
+      d.fontWeight    = cs.fontWeight;
+      d.fontStyle     = cs.fontStyle;
+      d.lineHeight    = cs.lineHeight;
+      d.letterSpacing = cs.letterSpacing;
+      d.color         = cs.color;
+      d.textAlign     = cs.textAlign;
+      d.padding       = cs.padding;
+      d.margin        = cs.margin;
+      d.border        = cs.border;
+      d.borderRadius  = cs.borderRadius;
+      d.background    = cs.background;
+      d.whiteSpace    = 'pre-wrap';
+      d.overflowWrap  = 'anywhere';
+      d.wordBreak     = 'break-word';
+
+      ta.parentNode.replaceChild(div, ta);
+    }
+  }
+
+  async function exportPDF() {
+    const btn = document.getElementById('btnExportPdf');
+    btn.textContent = 'Generating…';
+    btn.disabled = true;
+
+    // Elements that should not appear in the PDF (delete buttons, add buttons)
+    const uiOnly = document.querySelectorAll(
+      '.goal-del, .story-del, .task-del, .add-story-card, .add-task-btn, .add-goal-btn, .topbar .btn'
+    );
+    uiOnly.forEach(el => el.style.visibility = 'hidden');
+
+    const liveShell = document.querySelector('.app-shell');
+
+    try {
+      // Capture the entire app shell at 2× resolution for crisp text
+      const canvas = await html2canvas(liveShell, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        onclone(_clonedDoc, clonedShell) {
+          materializeTextareasForPdf(liveShell, clonedShell);
+        }
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+
+      // Use landscape A4 — story maps are typically wider than tall
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+      const pageW = pdf.internal.pageSize.getWidth();   // 297 mm
+      const pageH = pdf.internal.pageSize.getHeight();  // 210 mm
+
+      // Scale the captured image to fit the page width
+      const imgW = pageW;
+      const imgH = (canvas.height * pageW) / canvas.width;
+
+      // If the board is taller than one page, slice it across multiple pages
+      let remainingH = imgH;
+      let yOffset = 0;
+
+      while (remainingH > 0) {
+        pdf.addImage(imgData, 'PNG', 0, yOffset, imgW, imgH);
+        remainingH -= pageH;
+
+        if (remainingH > 0) {
+          pdf.addPage();
+          yOffset -= pageH; // shift image up by one page height for the next slice
+        }
+      }
+
+      pdf.save((data.title || 'story-map') + '.pdf');
+    } catch (err) {
+      alert('PDF export failed: ' + err.message);
+    } finally {
+      // Always restore the UI controls even if something went wrong
+      uiOnly.forEach(el => el.style.visibility = '');
+      btn.textContent = 'Export PDF';
+      btn.disabled = false;
     }
   }
 
